@@ -213,6 +213,13 @@ void wpaint(HWND hwnd) {
 //    int cellHeight = clientRect.bottom / config.gridSize;
 //    grid[y / cellHeight][x / cellWidth] = type;
 //}
+unsigned long seed = 1;  // это то самое стартовое значение,
+// о котором мы говорили ранее
+
+int my_rand() {
+    seed = seed * 1103515245 + 12345;  // Линейный конгруэнтный метод
+    return (seed / 65536) % 256;     // Вернуть значение в диапазоне 0-32767
+}
 
 LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -233,7 +240,12 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
                 RunNotepad();
             }
             else if (wParam == VK_RETURN) {
-                COLORREF color = RGB(rand() % 256, rand() % 256, rand() % 256);
+               
+
+                srand(time(0)*100);
+                
+                
+                COLORREF color = RGB(my_rand(), my_rand(), my_rand());
                 config.backgroundColor = color;
                 WriteConfigFile();
                 std::cout << color;
