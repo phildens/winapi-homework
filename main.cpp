@@ -40,7 +40,7 @@ struct Configuration {
     COLORREF circleColor;
     COLORREF crossColor;
 };
-int method = 2;
+int method = 1;
 // Глобальная переменная для хранения конфигурации
 Configuration config;
 bool config_exist = false;
@@ -51,24 +51,9 @@ int take_start_color = 0;
 void ReadConfigFile() {
     switch (method) {
         case (0) : {
-            std::ifstream file("configstream.ini");
-            if (file.is_open()) {
-                // Чтение значений из файла и запись в структуру config
-                file >> config.gridSize;
-                file >> config.windowWidth;
-                file >> config.windowHeight;
-                int r, g, b;
-                file >> r >> g >> b;
-                config.backgroundColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
-                file >> r >> g >> b;
-                config.gridColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
-                file >> r >> g >> b;
-                config.circleColor = RGB(r, g, b);
-                file >> r >> g >> b;
-                config.crossColor = RGB(r, g, b);
-                file.close();
-                config_exist = true;
-            }
+            std::ifstream in("config.ini");
+            in.read((char*)&config, sizeof(Configuration));
+            in.close();
             break;
         };
         case (1): {
@@ -82,46 +67,17 @@ void ReadConfigFile() {
             break;
         };
         case (2): {
-            FILE* file = fopen("configfopen.ini", "rb");
-            if (file) {
-                if (fread(&config, sizeof(Configuration), 1, file) == 1) {
-                    fclose(file);
-                    
-                }
-            }
-            else {
-                std::cout << "file not exist";
-            }
+            auto fd = fopen("config.ini", "rb");
+            fread(&config, sizeof(Configuration), 1, fd);
+            fclose(fd);
 
             break;
         };
         case (3): {
-            HANDLE hFile = CreateFile(TEXT("config.ini"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-            if (hFile == INVALID_HANDLE_VALUE) {
-                std::cerr << "Failed to open configuration file for reading. Error code: " << GetLastError() << std::endl;
-                return;
-            }
-
-            HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
-            if (!hMapping) {
-                std::cerr << "Failed to create file mapping. Error code: " << GetLastError() << std::endl;
-                CloseHandle(hFile);
-                return;
-            }
-
-            LPVOID pData = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
-            if (!pData) {
-                std::cerr << "Failed to map view of file. Error code: " << GetLastError() << std::endl;
-                CloseHandle(hMapping);
-                CloseHandle(hFile);
-                return;
-            }
-
-            memcpy(&config, pData, sizeof(Configuration));
-
-            UnmapViewOfFile(pData);
-            CloseHandle(hMapping);
-            CloseHandle(hFile);
+            auto h_file = CreateFile("config.ini", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            ReadFile(h_file, &config, sizeof(Configuration), nullptr, nullptr);
+            CloseHandle(h_file);
+            break;
         };
 
     default:
@@ -139,17 +95,9 @@ void WriteConfigFile() {
     switch (method)
     {
     case 0: {
-        std::ofstream file("configstream.ini");
-        if (file.is_open()) {
-            // Запись значений из структуры config в файл
-            file << config.gridSize << "\n";
-            file << config.windowWidth << " " << config.windowHeight << "\n";
-            file << (int)GetRValue(config.backgroundColor) << " " << (int)GetGValue(config.backgroundColor) << " " << (int)GetBValue(config.backgroundColor) << "\n";
-            file << (int)GetRValue(config.gridColor) << " " << (int)GetGValue(config.gridColor) << " " << (int)GetBValue(config.gridColor) << "\n";
-            file << GetRValue(config.circleColor) << " " << GetGValue(config.circleColor) << " " << GetBValue(config.circleColor) << "\n";
-            file << GetRValue(config.crossColor) << " " << GetGValue(config.crossColor) << " " << GetBValue(config.crossColor) << "\n";
-            file.close();
-        }
+        std::ofstream out("config.ini");
+        out.write((char*)&config, sizeof(Configuration));
+        out.close();
         break;
     }
 
@@ -167,39 +115,14 @@ void WriteConfigFile() {
         break;
     }
     case 2: {
-        FILE* file = fopen("configfopen.ini", "wb");
-        fwrite(&config, sizeof(Configuration), 1, file);
-        fclose(file);
-        break;
+        auto fd = fopen("config.ini", "wb");
+        fwrite(&config, sizeof(config), 1, fd);
+        fclose(fd);
     }
     case (3): {
-        HANDLE hFile = CreateFile(TEXT("config.ini"), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (hFile == INVALID_HANDLE_VALUE) {
-            std::cerr << "Failed to open configuration file for writing. Error code: " << GetLastError() << std::endl;
-            return;
-        }
-
-        HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READWRITE, 0, sizeof(Configuration), NULL);
-        if (!hMapping) {
-            std::cerr << "Failed to create file mapping. Error code: " << GetLastError() << std::endl;
-            CloseHandle(hFile);
-            return;
-        }
-
-        LPVOID pData = MapViewOfFile(hMapping, FILE_MAP_WRITE, 0, 0, 0);
-        if (!pData) {
-            std::cerr << "Failed to map view of file. Error code: " << GetLastError() << std::endl;
-            CloseHandle(hMapping);
-            CloseHandle(hFile);
-            return;
-        }
-
-        memcpy(pData, &config, sizeof(Configuration));
-        FlushViewOfFile(pData, sizeof(Configuration));
-
-        UnmapViewOfFile(pData);
-        CloseHandle(hMapping);
-        CloseHandle(hFile);
+        auto h_file = CreateFile("config.ini", GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        WriteFile(h_file, &config, sizeof(config), nullptr, nullptr);
+        CloseHandle(h_file);
         break;
     }
     default:
