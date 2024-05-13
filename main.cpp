@@ -40,57 +40,173 @@ struct Configuration {
     COLORREF circleColor;
     COLORREF crossColor;
 };
-
+int method = 2;
 // Глобальная переменная для хранения конфигурации
 Configuration config;
 bool config_exist = false;
 int take_start_color = 0;
 
+
 // Функция для чтения конфигурационного файла
 void ReadConfigFile() {
-    std::ifstream file("config.ini");
-    if (file.is_open()) {
-        // Чтение значений из файла и запись в структуру config
-        file >> config.gridSize;
-        file >> config.windowWidth;
-        file >> config.windowHeight;
-        int r, g, b;
-        file >> r >> g >> b;
-        config.backgroundColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
-        file >> r >> g >> b;
-        config.gridColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
-        file >> r >> g >> b;
-        config.circleColor = RGB(r, g, b);
-        file >> r >> g >> b;
-        config.crossColor = RGB(r, g, b);
-        file.close();
-        config_exist = true;
-    } else {
-        // Если файл не найден, используем значения по умолчанию
-        config.gridSize = 3;
-        config.windowWidth = 320;
-        config.windowHeight = 240;
-        config.backgroundColor = RGB(0, 0, 255);
-        config.gridColor = RGB(255, 0, 0);
-        config.circleColor = RGB(0, 0, 255);
-        config.crossColor = RGB(0, 255, 0);
+    switch (method) {
+        case (0) : {
+            std::ifstream file("configstream.ini");
+            if (file.is_open()) {
+                // Чтение значений из файла и запись в структуру config
+                file >> config.gridSize;
+                file >> config.windowWidth;
+                file >> config.windowHeight;
+                int r, g, b;
+                file >> r >> g >> b;
+                config.backgroundColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
+                file >> r >> g >> b;
+                config.gridColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
+                file >> r >> g >> b;
+                config.circleColor = RGB(r, g, b);
+                file >> r >> g >> b;
+                config.crossColor = RGB(r, g, b);
+                file.close();
+                config_exist = true;
+            }
+            break;
+        };
+        case (1): {
+            HANDLE hFile = CreateFile(TEXT("config.ini"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (hFile != INVALID_HANDLE_VALUE) {
+                DWORD dwBytesRead;
+                if (ReadFile(hFile, &config, sizeof(Configuration), &dwBytesRead, NULL) && dwBytesRead == sizeof(Configuration)) {}
+                // Прочитали конфигурацию успешно
+                CloseHandle(hFile);
+            }
+            break;
+        };
+        case (2): {
+            FILE* file = fopen("configfopen.ini", "rb");
+            if (file) {
+                if (fread(&config, sizeof(Configuration), 1, file) == 1) {
+                    fclose(file);
+                    
+                }
+            }
+            else {
+                std::cout << "file not exist";
+            }
+
+            break;
+        };
+        case (3): {
+            HANDLE hFile = CreateFile(TEXT("config.ini"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (hFile == INVALID_HANDLE_VALUE) {
+                std::cerr << "Failed to open configuration file for reading. Error code: " << GetLastError() << std::endl;
+                return;
+            }
+
+            HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
+            if (!hMapping) {
+                std::cerr << "Failed to create file mapping. Error code: " << GetLastError() << std::endl;
+                CloseHandle(hFile);
+                return;
+            }
+
+            LPVOID pData = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+            if (!pData) {
+                std::cerr << "Failed to map view of file. Error code: " << GetLastError() << std::endl;
+                CloseHandle(hMapping);
+                CloseHandle(hFile);
+                return;
+            }
+
+            memcpy(&config, pData, sizeof(Configuration));
+
+            UnmapViewOfFile(pData);
+            CloseHandle(hMapping);
+            CloseHandle(hFile);
+        };
+
+    default:
+        break;
     }
 }
+        
+        
+    
+
 
 // Функция для записи конфигурационного файла
 void WriteConfigFile() {
-    std::ofstream file("config.ini");
-    if (file.is_open()) {
-        // Запись значений из структуры config в файл
-        file << config.gridSize << "\n";
-        file << config.windowWidth << " " << config.windowHeight << "\n";
-        file << (int)GetRValue(config.backgroundColor) << " " << (int)GetGValue(config.backgroundColor) << " " << (int)GetBValue(config.backgroundColor) << "\n";
-        file << (int)GetRValue(config.gridColor) << " " << (int)GetGValue(config.gridColor) << " " << (int)GetBValue(config.gridColor) << "\n";
-        file << GetRValue(config.circleColor) << " " << GetGValue(config.circleColor) << " " << GetBValue(config.circleColor) << "\n";
-        file << GetRValue(config.crossColor) << " " << GetGValue(config.crossColor) << " " << GetBValue(config.crossColor) << "\n";
-        file.close();
+
+    switch (method)
+    {
+    case 0: {
+        std::ofstream file("configstream.ini");
+        if (file.is_open()) {
+            // Запись значений из структуры config в файл
+            file << config.gridSize << "\n";
+            file << config.windowWidth << " " << config.windowHeight << "\n";
+            file << (int)GetRValue(config.backgroundColor) << " " << (int)GetGValue(config.backgroundColor) << " " << (int)GetBValue(config.backgroundColor) << "\n";
+            file << (int)GetRValue(config.gridColor) << " " << (int)GetGValue(config.gridColor) << " " << (int)GetBValue(config.gridColor) << "\n";
+            file << GetRValue(config.circleColor) << " " << GetGValue(config.circleColor) << " " << GetBValue(config.circleColor) << "\n";
+            file << GetRValue(config.crossColor) << " " << GetGValue(config.crossColor) << " " << GetBValue(config.crossColor) << "\n";
+            file.close();
+        }
+        break;
+    }
+
+    case 1: {
+        HANDLE hFile = CreateFile(TEXT("config.ini"), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            DWORD dwBytesWritten;
+            if (WriteFile(hFile, &config, sizeof(Configuration), &dwBytesWritten, NULL) && dwBytesWritten == sizeof(Configuration)) {
+                // Записали конфигурацию успешно
+            }
+
+
+        }
+        CloseHandle(hFile);
+        break;
+    }
+    case 2: {
+        FILE* file = fopen("configfopen.ini", "wb");
+        fwrite(&config, sizeof(Configuration), 1, file);
+        fclose(file);
+        break;
+    }
+    case (3): {
+        HANDLE hFile = CreateFile(TEXT("config.ini"), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            std::cerr << "Failed to open configuration file for writing. Error code: " << GetLastError() << std::endl;
+            return;
+        }
+
+        HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READWRITE, 0, sizeof(Configuration), NULL);
+        if (!hMapping) {
+            std::cerr << "Failed to create file mapping. Error code: " << GetLastError() << std::endl;
+            CloseHandle(hFile);
+            return;
+        }
+
+        LPVOID pData = MapViewOfFile(hMapping, FILE_MAP_WRITE, 0, 0, 0);
+        if (!pData) {
+            std::cerr << "Failed to map view of file. Error code: " << GetLastError() << std::endl;
+            CloseHandle(hMapping);
+            CloseHandle(hFile);
+            return;
+        }
+
+        memcpy(pData, &config, sizeof(Configuration));
+        FlushViewOfFile(pData, sizeof(Configuration));
+
+        UnmapViewOfFile(pData);
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        break;
+    }
+    default:
+        break;
     }
 }
+
 //j
 const TCHAR szWinClass[] = _T("Win32SampleApp");
 const TCHAR szWinName[] = _T("Win32SampleWindow");
@@ -194,6 +310,7 @@ void wpaint(HWND hwnd) {
     if (take_start_color > 1) {
         gridcolor = InterpolateColor(startColor, endColor, sin(colorStep * 0.1));
         config.gridColor = gridcolor;
+        WriteConfigFile();
         //std::cout << config.gridColor;
     }
     else
@@ -205,7 +322,7 @@ void wpaint(HWND hwnd) {
     
     std::cout << config.gridColor << " " << gridcolor << '\n';
 
-    WriteConfigFile();
+    
     HPEN hpen = CreatePen(PS_SOLID, 2, gridcolor);
     SelectObject(hdc, hpen);
     //
@@ -342,14 +459,35 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 
 
 int main(int argc, char** argv)
-{
+{   
     ReadConfigFile();
-    
     if (__argc == 2) {
-        config.gridSize = atoi(__argv[1]);
-        std::cout << atoi(__argv[1]);
+        if (atoi(__argv[1]) < 1) {
+            method = method + atoi(__argv[1]);
+        }
+        else
+        {
+            config.gridSize = atoi(__argv[1]);
+            std::cout << atoi(__argv[1]);
+            WriteConfigFile();
+        }
+    }
+    else if (__argc == 3) {
+        method = method + atoi(__argv[1]);
+        config.gridSize = atoi(__argv[2]);
+        std::cout << atoi(__argv[2]);
         WriteConfigFile();
     }
+    config.gridSize = 3;
+    config.windowWidth = 320;
+    config.windowHeight = 240;
+    config.backgroundColor = RGB(0, 0, 255);
+    config.gridColor = RGB(255, 0, 0);
+    config.circleColor = RGB(0, 0, 255);
+    config.crossColor = RGB(0, 255, 0);
+    ReadConfigFile();
+    
+    
 
     
     grid = new ObjectType * [config.gridSize];
