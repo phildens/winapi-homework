@@ -44,6 +44,7 @@ struct Configuration {
 // Глобальная переменная для хранения конфигурации
 Configuration config;
 bool config_exist = false;
+int take_start_color = 0;
 
 // Функция для чтения конфигурационного файла
 void ReadConfigFile() {
@@ -57,7 +58,7 @@ void ReadConfigFile() {
         file >> r >> g >> b;
         config.backgroundColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
         file >> r >> g >> b;
-        config.gridColor = RGB(r, g, b);
+        config.gridColor = RGB((BYTE)r, (BYTE)g, (BYTE)b);
         file >> r >> g >> b;
         config.circleColor = RGB(r, g, b);
         file >> r >> g >> b;
@@ -84,7 +85,7 @@ void WriteConfigFile() {
         file << config.gridSize << "\n";
         file << config.windowWidth << " " << config.windowHeight << "\n";
         file << (int)GetRValue(config.backgroundColor) << " " << (int)GetGValue(config.backgroundColor) << " " << (int)GetBValue(config.backgroundColor) << "\n";
-        file << GetRValue(config.gridColor) << " " << GetGValue(config.gridColor) << " " << GetBValue(config.gridColor) << "\n";
+        file << (int)GetRValue(config.gridColor) << " " << (int)GetGValue(config.gridColor) << " " << (int)GetBValue(config.gridColor) << "\n";
         file << GetRValue(config.circleColor) << " " << GetGValue(config.circleColor) << " " << GetBValue(config.circleColor) << "\n";
         file << GetRValue(config.crossColor) << " " << GetGValue(config.crossColor) << " " << GetBValue(config.crossColor) << "\n";
         file.close();
@@ -186,10 +187,26 @@ void wpaint(HWND hwnd) {
     int cellWidth = clientRect.right;
     int cellHeight = clientRect.bottom;
 
-    WriteConfigFile();
+    
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hwnd, &ps);
-    HPEN hpen = CreatePen(PS_SOLID, 2, InterpolateColor(startColor, endColor, sin(colorStep * 0.1)));
+    COLORREF gridcolor;
+    if (take_start_color > 1) {
+        gridcolor = InterpolateColor(startColor, endColor, sin(colorStep * 0.1));
+        config.gridColor = gridcolor;
+        //std::cout << config.gridColor;
+    }
+    else
+    {
+        gridcolor = config.gridColor;
+        
+        take_start_color++;
+    }
+    
+    std::cout << config.gridColor << " " << gridcolor << '\n';
+
+    WriteConfigFile();
+    HPEN hpen = CreatePen(PS_SOLID, 2, gridcolor);
     SelectObject(hdc, hpen);
     //
     for (int i = 1; i < config.gridSize; ++i) {
@@ -248,7 +265,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
                 COLORREF color = RGB(my_rand(), my_rand(), my_rand());
                 config.backgroundColor = color;
                 WriteConfigFile();
-                std::cout << color;
+            
 
                 hBrush = CreateSolidBrush(color);
 
@@ -258,6 +275,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
             }
             break;
         case WM_PAINT: {
+            
             wpaint(hwnd);
             return 0;
         }
@@ -272,12 +290,14 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         }
         case WM_MOUSEWHEEL: {
             int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            
             if (delta > 0) {
                 colorStep += 5;
             }
             else {
                 colorStep -= 5;
             }
+            wpaint(hwnd);
             InvalidateRect(hwnd, NULL, TRUE);
             return 0;
         }
@@ -287,7 +307,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
-            std::cout << x, y;
+            //std::cout << x, y;
             if (grid[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
                 //
                 grid[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CIRCLES;
