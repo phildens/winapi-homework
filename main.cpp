@@ -6,6 +6,7 @@
 #include <iostream>
 #include <cmath>
 #include <fstream>
+#include <vector>
 #define KEY_SHIFTED     0x8000
 #define KEY_TOGGLED     0x0001
 #define MODE_MMAP           0
@@ -15,7 +16,7 @@
 
 #define CIRCLE  1
 #define CROSS   2
-
+const UINT WM_FIELD_UPDATE = RegisterWindowMessage("WM_FIELD_UPDATE");
 enum ObjectType {
     NONE,
     CIRCLES,
@@ -176,7 +177,7 @@ void WriteConfigFile() {
     default:
         break;
     }
-    std::cout << "mmap" << '\n';
+    
     auto h_file = CreateFile(
         "CONFIG",
         GENERIC_READ,
@@ -205,12 +206,49 @@ void WriteConfigFile() {
     viver.ViewConfigs();
 }
 
+
+
+struct Board {
+    HANDLE h_map_file;
+    std::vector<std::vector<UINT>> data;
+    const wchar_t* shared_memory_name = L"MySharedMemory";
+    int* lp_map_address;
+    int shared_memory_size;
+
+    void pullData() {
+        for (int i = 0; i < config.gridSize; ++i)
+            memcpy(data[i].data(), lp_map_address + i * config.gridSize, sizeof(int) * config.gridSize);
+    }
+
+    void pushData() {
+        for (int i = 0; i < config.gridSize; ++i)
+            memcpy(lp_map_address + i * config.gridSize, data[i].data(), sizeof(int) * config.gridSize);
+        PostMessage(HWND_BROADCAST, WM_FIELD_UPDATE, 0, 0);
+
+    }
+
+    void initData() {
+        for (int i = 0; i < config.gridSize; ++i) { data.emplace_back(config.gridSize); }
+        shared_memory_size = sizeof(UINT) * config.gridSize * config.gridSize;
+        h_map_file = CreateFileMappingW(INVALID_HANDLE_VALUE,
+            nullptr,
+            PAGE_READWRITE, 0, shared_memory_size,
+            shared_memory_name);
+        lp_map_address = (int*)MapViewOfFile(h_map_file, FILE_MAP_ALL_ACCESS, 0, 0, shared_memory_size);
+        pullData();
+    }
+
+    void close() {
+        UnmapViewOfFile(lp_map_address);
+        CloseHandle(h_map_file);
+    }
+};
 //j
 const TCHAR szWinClass[] = _T("Win32SampleApp");
 const TCHAR szWinName[] = _T("Win32SampleWindow");
 HWND hwnd;               /* This is the handle for our window */
 HBRUSH hBrush;
-
+Board board;
 
 COLORREF startColor = RGB(255, 0, 0); //
 COLORREF endColor = RGB(0, 200, 255);   //
@@ -282,10 +320,10 @@ void DrawShapes(HDC hdc) {
     for (int i = 0; i < config.gridSize; i++) {
         for (int j = 0; j < config.gridSize; j++) {
 
-            if (grid[i][j] == CIRCLE) {
+            if (board.data[i][j] == CIRCLE) {
                 DrawCircle(hdc, j, i);
             }
-            else if (grid[i][j] == CROSS) {
+            else if (board.data[i][j] == CROSS) {
                 DrawCross(hdc, j, i);
             }
         }
@@ -355,6 +393,12 @@ int my_rand() {
 
 LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    RECT rect = { 0 };
+    if (message == WM_FIELD_UPDATE) {
+        board.pullData();
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return 0;
+    }
     switch (message)                  /* handle the messages */
     {
     case WM_DESTROY:
@@ -423,10 +467,10 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         int x = GET_X_LPARAM(lParam);
         int y = GET_Y_LPARAM(lParam);
         //std::cout << x, y;
-        if (grid[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
+        if (board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
             //
-            grid[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CIRCLES;
-
+            board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CIRCLES;
+            board.pushData();
             //
             InvalidateRect(hwnd, NULL, TRUE);
         }
@@ -437,10 +481,10 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         GetClientRect(hwnd, &clientRect);
         int x = GET_X_LPARAM(lParam);
         int y = GET_Y_LPARAM(lParam);
-        if (grid[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
+        if (board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
             //
-            grid[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CROSSES;
-
+            board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CROSSES;
+            board.pushData();
             //
             InvalidateRect(hwnd, NULL, TRUE);
         }
@@ -453,7 +497,8 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
     /* for messages that we don't deal with */
     return DefWindowProc(hwnd, message, wParam, lParam);
 }
-
+const TCHAR SZ_WIN_CLASS[] = _T("lab_5");
+const TCHAR SZ_WIN_NAME[] = _T("lab_5");
 
 
 int main(int argc, char** argv)
@@ -537,12 +582,12 @@ int main(int argc, char** argv)
     config.ViewConfigs();
 
 
-
-    grid = new ObjectType * [config.gridSize];
+    board.initData();
+   /* grid = new ObjectType * [config.gridSize];
     for (int i = 0; i < config.gridSize; ++i) {
         grid[i] = new ObjectType[config.gridSize];
         memset(grid[i], NONE, config.gridSize * sizeof(ObjectType));
-    }
+    }*/
 
 
     BOOL bMessageOk;
@@ -554,9 +599,10 @@ int main(int argc, char** argv)
     /* Get handle */
     HINSTANCE hThisInstance = GetModuleHandle(NULL);
 
+
     /* The Window structure */
     wincl.hInstance = hThisInstance;
-    wincl.lpszClassName = szWinClass;
+    wincl.lpszClassName = SZ_WIN_CLASS;
     wincl.lpfnWndProc = WindowProcedure;      /* This function is called by Windows */
 
     /* Use custom brush to paint the background of the window */
@@ -569,8 +615,8 @@ int main(int argc, char** argv)
 
     /* The class is registered, let's create the program*/
     hwnd = CreateWindow(
-        szWinClass,          /* Classname */
-        szWinName,       /* Title Text */
+        SZ_WIN_CLASS,          /* Classname */
+        SZ_WIN_NAME,       /* Title Text */
         WS_OVERLAPPEDWINDOW, /* default window */
         CW_USEDEFAULT,       /* Windows decides the position */
         CW_USEDEFAULT,       /* where the window ends up on the screen */
@@ -601,15 +647,15 @@ int main(int argc, char** argv)
         /* Send message to WindowProcedure */
         DispatchMessage(&message);
     }
-    for (int i = 0; i < config.gridSize; ++i) {
+    /*for (int i = 0; i < config.gridSize; ++i) {
         delete[] grid[i];
     }
-    delete[] grid;
+    delete[] grid;*/
     /* Cleanup stuff */
     DestroyWindow(hwnd);
-    UnregisterClass(szWinClass, hThisInstance);
+    UnregisterClass(SZ_WIN_CLASS, hThisInstance);
     DeleteObject(hBrush);
-
+    board.close();
 
 
     return 0;
