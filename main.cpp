@@ -25,6 +25,9 @@ enum ObjectType {
     CROSSES
 };
 HANDLE back_t;
+HANDLE sem1;
+HANDLE sem2;
+HANDLE mutex;
 struct Color {
     UINT r = 0;
     UINT g = 0;
@@ -34,7 +37,8 @@ struct Color {
         return RGB(r, g, b);
     }
 };
-
+#define VK_0           0x30
+#define VK_9           0x39
 ObjectType** grid = nullptr;
 
 
@@ -300,6 +304,10 @@ struct Board {
     void close() {
         UnmapViewOfFile(lp_map_address);
         CloseHandle(h_map_file);
+
+        //DeleteObject(board.h_brush);
+        DeleteObject(hpen_t1);
+        DeleteObject(hpen_t2);
     }
 };
 //j
@@ -454,7 +462,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         PostQuitMessage(0);       /* send a WM_QUIT to the message queue */
         return 0;
     case WM_KEYDOWN:
-        std::cout << "hghhghg";
+        
         if (wParam == 'Q' && GetAsyncKeyState(VK_CONTROL) < 0) {
             PostQuitMessage(0);       /* send a WM_QUIT to the message queue */
 
@@ -463,7 +471,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
             PostQuitMessage(0);
         }
         else if (wParam == VK_SPACE) {
-            
+            std::cout << "thread_paused";
             if (is_pause) {
                 is_pause = false;
             }
@@ -473,6 +481,12 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
             }
             
             (is_pause ? ResumeThread : SuspendThread)(back_t);
+        }
+        else if (VK_0 <= wParam && wParam <= VK_9) {
+            //std::cout << "old priority: " << GetThreadPriority(back_t) << std::endl;
+            //std::cout << "to set: " << wParam - VK_0 << " highest: " << THREAD_PRIORITY_HIGHEST << std::endl;
+            SetThreadPriority(back_t, wParam - VK_0);
+            std::cout << "change priority to : " << GetThreadPriority(back_t) << std::endl;
         }
         else if (wParam == 'C' && GetAsyncKeyState(VK_SHIFT) < 0) {
             RunNotepad();
@@ -522,35 +536,43 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         InvalidateRect(hwnd, NULL, TRUE);
         return 0;
     }*/
-    case WM_RBUTTONDOWN: {
-        RECT clientRect;
-        GetClientRect(hwnd, &clientRect);
+    //case WM_RBUTTONDOWN: {
+    //    RECT clientRect;
+    //    GetClientRect(hwnd, &clientRect);
 
-        int x = GET_X_LPARAM(lParam);
-        int y = GET_Y_LPARAM(lParam);
-        //std::cout << x, y;
-        if (board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
-            //
-            board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CIRCLES;
-            board.pushData();
-            //
-            InvalidateRect(hwnd, NULL, TRUE);
-        }
-        return 0;
-    }
+    //    int x = GET_X_LPARAM(lParam);
+    //    int y = GET_Y_LPARAM(lParam);
+    //    //std::cout << x, y;
+    //    if (board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
+    //        //
+    //        board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CIRCLES;
+    //        board.pushData();
+    //        //
+    //        InvalidateRect(hwnd, NULL, TRUE);
+    //    }
+    //    return 0;
+    //}
     case WM_LBUTTONDOWN: {
+
+        /*if (WaitForSingleObject( (team == CIRCLE ? sem1 : sem2),1)== WAIT_TIMEOUT) {
+            std::cout << "not your turn";
+            return;
+        }*/
+
+        WaitForSingleObject(mutex, INFINITE);
         RECT clientRect;
         GetClientRect(hwnd, &clientRect);
         int x = GET_X_LPARAM(lParam);
         int y = GET_Y_LPARAM(lParam);
         if (board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] == NONE) {
-            //
+
             board.data[y * config.gridSize / clientRect.bottom][x * config.gridSize / clientRect.right] = CROSSES;
             board.pushData();
-            //
+
             InvalidateRect(hwnd, NULL, TRUE);
         }
-
+        ReleaseMutex(mutex);
+        //ReleaseSemaphore((team != CIRCLE ? sem1 : sem2),1 ,NULL);
         return 0;
     }
 
@@ -559,6 +581,8 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
     /* for messages that we don't deal with */
     return DefWindowProc(hwnd, message, wParam, lParam);
 }
+
+int team = CIRCLE;
 
 UINT change_delta = 0;
 UINT delay = 50;
@@ -700,7 +724,10 @@ int main(int argc, char** argv)
         grid[i] = new ObjectType[config.gridSize];
         memset(grid[i], NONE, config.gridSize * sizeof(ObjectType));
     }*/
-
+    mutex = CreateMutex(NULL, FALSE, "BoardMutex");
+    sem1 = CreateSemaphore(NULL, 1, 1, "1sem");
+    sem2 = CreateSemaphore(NULL, 0, 1, "2sem");
+   
 
     BOOL bMessageOk;
     MSG message;            /* Here message to the application are saved */
