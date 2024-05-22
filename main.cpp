@@ -16,21 +16,77 @@
 
 #define CIRCLE  1
 #define CROSS   2
+std::atomic<bool> is_render(true);
+std::atomic<bool> is_pause(true);
 const UINT WM_FIELD_UPDATE = RegisterWindowMessage("WM_FIELD_UPDATE");
 enum ObjectType {
     NONE,
     CIRCLES,
     CROSSES
 };
-
+HANDLE back_t;
 struct Color {
-    int r = 0;
-    int g = 0;
-    int b = 0;
+    UINT r = 0;
+    UINT g = 0;
+    UINT b = 0;
+
+    [[nodiscard]] unsigned int as_uint() const {
+        return RGB(r, g, b);
+    }
 };
 
 ObjectType** grid = nullptr;
 
+
+struct color_change {
+    UINT h = 0;
+    UINT s = 0;
+    UINT v = 0;
+
+    [[nodiscard]] unsigned int as_uint() const {
+        int h1, vmin, vinc, vdec, a, r, g, b;
+        h1 = (h / 60) % 6;
+        vmin = (100 - s) * v / 100;
+        a = (v - vmin) * (h % 60) / 60;
+        vinc = vmin + a;
+        vdec = v - a;
+        switch (h1) {
+        case 0:
+            r = v;
+            g = vinc;
+            b = vmin;
+            break;
+        case 1:
+            r = vdec;
+            g = v;
+            b = vmin;
+            break;
+        case 2:
+            r = vmin;
+            g = v;
+            b = vinc;
+            break;
+        case 3:
+            r = vmin;
+            g = vdec;
+            b = v;
+            break;
+        case 4:
+            r = vinc;
+            g = vmin;
+            b = v;
+            break;
+        case 5:
+            r = v;
+            g = vmin;
+            b = vdec;
+            break;
+        default:
+            break;
+        }
+        return RGB(r * 255 / 100, g * 255 / 100, b * 255 / 100);
+    }
+};
 
 struct Configuration {
     int gridSize;
@@ -209,12 +265,15 @@ void WriteConfigFile() {
 
 
 struct Board {
+    RECT rect{ 0 };
     HANDLE h_map_file;
     std::vector<std::vector<UINT>> data;
     const wchar_t* shared_memory_name = L"MySharedMemory";
     int* lp_map_address;
     int shared_memory_size;
-
+    HBRUSH h_brush;
+    HPEN hpen_t1;
+    HPEN hpen_t2;
     void pullData() {
         for (int i = 0; i < config.gridSize; ++i)
             memcpy(data[i].data(), lp_map_address + i * config.gridSize, sizeof(int) * config.gridSize);
@@ -332,34 +391,24 @@ void DrawShapes(HDC hdc) {
 
 
 
-void wpaint(HWND hwnd) {
-    RECT clientRect;
-    GetClientRect(hwnd, &clientRect);
+void wpaint(HDC hdc) {
+    
+    GetClientRect(hwnd, &board.rect);
 
-    int cellWidth = clientRect.right;
-    int cellHeight = clientRect.bottom;
+    int cellWidth = board.rect.right;
+    int cellHeight = board.rect.bottom;
 
 
-    PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(hwnd, &ps);
-    COLORREF gridcolor;
-    if (take_start_color > 1) {
-        gridcolor = InterpolateColor(startColor, endColor, sin(colorStep * 0.1));
-        config.gridColor = gridcolor;
-        WriteConfigFile();
-        //std::cout << config.gridColor;
-    }
-    else
-    {
-        gridcolor = config.gridColor;
+   
+    //HDC hdc = BeginPaint(hwnd, &ps);
+    COLORREF gridcolor = RGB(0, 200, 255);
+    
 
-        take_start_color++;
-    }
-
-    std::cout << config.gridColor << " " << gridcolor << '\n';
+    //std::cout << config.gridColor << " " << gridcolor << '\n';
 
 
     HPEN hpen = CreatePen(PS_SOLID, 2, gridcolor);
+    SelectObject(hdc, board.h_brush);
     SelectObject(hdc, hpen);
     //
     for (int i = 1; i < config.gridSize; ++i) {
@@ -372,7 +421,7 @@ void wpaint(HWND hwnd) {
     //
     DrawShapes(hdc);
 
-    EndPaint(hwnd, &ps);
+    
 
 }
 //void UpdateGrid(int x, int y, ObjectType type) {
@@ -393,7 +442,7 @@ int my_rand() {
 
 LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    RECT rect = { 0 };
+    //RECT rect = { 0 };
     if (message == WM_FIELD_UPDATE) {
         board.pullData();
         InvalidateRect(hwnd, nullptr, TRUE);
@@ -405,12 +454,25 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         PostQuitMessage(0);       /* send a WM_QUIT to the message queue */
         return 0;
     case WM_KEYDOWN:
+        std::cout << "hghhghg";
         if (wParam == 'Q' && GetAsyncKeyState(VK_CONTROL) < 0) {
             PostQuitMessage(0);       /* send a WM_QUIT to the message queue */
 
         }
         else if (wParam == VK_ESCAPE) {
             PostQuitMessage(0);
+        }
+        else if (wParam == VK_SPACE) {
+            
+            if (is_pause) {
+                is_pause = false;
+            }
+            else
+            {
+                is_pause = true;
+            }
+            
+            (is_pause ? ResumeThread : SuspendThread)(back_t);
         }
         else if (wParam == 'C' && GetAsyncKeyState(VK_SHIFT) < 0) {
             RunNotepad();
@@ -433,7 +495,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
             InvalidateRect(hwnd, NULL, TRUE);
         }
         break;
-    case WM_PAINT: {
+    /*case WM_PAINT: {
 
         wpaint(hwnd);
         return 0;
@@ -446,8 +508,8 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         config.windowHeight = rect.bottom - rect.top;
         config.windowWidth = rect.right - rect.left;
         return 0;
-    }
-    case WM_MOUSEWHEEL: {
+    }*/
+    /*case WM_MOUSEWHEEL: {
         int delta = GET_WHEEL_DELTA_WPARAM(wParam);
 
         if (delta > 0) {
@@ -459,7 +521,7 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
         wpaint(hwnd);
         InvalidateRect(hwnd, NULL, TRUE);
         return 0;
-    }
+    }*/
     case WM_RBUTTONDOWN: {
         RECT clientRect;
         GetClientRect(hwnd, &clientRect);
@@ -497,6 +559,56 @@ LRESULT CALLBACK WindowProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM 
     /* for messages that we don't deal with */
     return DefWindowProc(hwnd, message, wParam, lParam);
 }
+
+UINT change_delta = 0;
+UINT delay = 50;
+color_change field_color = { 0, 100, 100 };
+DWORD WINAPI window_render(LPVOID lpparam) {
+    HWND hwnd = *reinterpret_cast<HWND*>(lpparam);
+    PAINTSTRUCT ps;
+    HDC hdc, hdc_mem;
+    HBITMAP hbm_mem, hbm_old;
+    RECT rect = { 0 };
+
+    hdc = GetDC(hwnd);
+    GetClientRect(hwnd, &rect);
+    hdc_mem = CreateCompatibleDC(hdc);
+    hbm_mem = CreateCompatibleBitmap(hdc, rect.right, rect.bottom);
+    hbm_old = (HBITMAP)SelectObject(hdc_mem, hbm_mem);
+    ReleaseDC(hwnd, hdc);
+
+    change_delta = field_color.h;
+    while (is_render) {
+        if (board.rect.right != rect.right || board.rect.bottom != rect.bottom) {
+            rect = board.rect;
+            SelectObject(hdc_mem, hbm_old);
+            DeleteObject(hbm_mem);
+            hdc = GetDC(hwnd);
+            hbm_mem = CreateCompatibleBitmap(hdc, rect.right, rect.bottom);
+            hbm_old = (HBITMAP)SelectObject(hdc_mem, hbm_mem);
+            ReleaseDC(hwnd, hdc);
+        }
+
+        field_color.h = (++change_delta / delay) % 360;
+        board.h_brush = CreateSolidBrush(field_color.as_uint());
+        DeleteBrush((HBRUSH)SetClassLongPtr(hwnd, GCLP_HBRBACKGROUND, (LONG_PTR)board.h_brush));
+
+        FillRect(hdc_mem, &board.rect, board.h_brush);
+
+        wpaint(hdc_mem);
+
+        InvalidateRect(hwnd, &board.rect, FALSE);
+        hdc = BeginPaint(hwnd, &ps);
+        BitBlt(hdc, 0, 0, rect.right, rect.bottom, hdc_mem, 0, 0, SRCCOPY);
+        EndPaint(hwnd, &ps);
+
+    }
+    SelectObject(hdc_mem, hbm_old);
+    DeleteObject(hbm_mem);
+    DeleteDC(hdc_mem);
+    return 0;
+}
+
 const TCHAR SZ_WIN_CLASS[] = _T("lab_5");
 const TCHAR SZ_WIN_NAME[] = _T("lab_5");
 
@@ -630,7 +742,7 @@ int main(int argc, char** argv)
 
     /* Make the window visible on the screen */
     ShowWindow(hwnd, nCmdShow);
-
+    back_t = CreateThread(NULL, 64 * 1024, window_render, &hwnd, 0, NULL);
     /* Run the message loop. It will run until GetMessage() returns 0 */
     while ((bMessageOk = GetMessage(&message, NULL, 0, 0)) != 0)
     {
@@ -652,6 +764,7 @@ int main(int argc, char** argv)
     }
     delete[] grid;*/
     /* Cleanup stuff */
+    CloseHandle(back_t);
     DestroyWindow(hwnd);
     UnregisterClass(SZ_WIN_CLASS, hThisInstance);
     DeleteObject(hBrush);
